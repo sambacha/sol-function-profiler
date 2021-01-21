@@ -1,7 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const asciiTable = require('ascii-table')
-const parser = require('solidity-parser-antlr')
+const parser = require('@solidity-parser/parser')
 const utils = require('./utils.js')
 const report = require('./parsers')
 
