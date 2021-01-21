@@ -1,87 +1,143 @@
-const parser     = require("solidity-parser");
-const asciiTable = require('ascii-table');
+const fs = require('fs')
+const path = require('path')
+const asciiTable = require('ascii-table')
+const parser = require('solidity-parser-antlr')
+const utils = require('./utils.js')
+const report = require('./parsers')
 
-if(process.argv.length < 3) {
-  console.log("Error: Missing argument for sol file to scan");
-  process.exit(1);
-}
+let contract
+let parsedContract
 
-var target   = process.argv[2],
-    contract = parser.parseFile(target);
-
-generateReport(target, contract);
-
-function generateReport(target, contract) {
-  var table = new asciiTable(target);
-  table.setHeading('Contract', 'Function', 'Visibility', 'Constant', 'Returns', 'Modifiers');
-
-  contract.body.forEach(function(contract) {
-    if(contract.type == 'ContractStatement') {
-      contract.body.forEach(function(part) {
-        if(part.type == "FunctionDeclaration" && part.is_abstract == false) {
-          var func = parseFunctionPart(contract, part);
-          table.addRow(func.contract, func.function, func.visibility, func.constant, func.returns, func.modifiers);
-        }
-      })
-    }
-  })
-  console.log(table.toString());
-}
-
-function parseFunctionPart(contract, part) {
-  var contractName = contract.name,
-      funcName     = part.name || "",
-      params       = [];
-
-  if(part.params) {
-    part.params.forEach(function(param) {
-      params.push(param.literal.literal);
-    });
-    funcName += "(" + params.join(',') + ")"
-  } else {
-    funcName += "()"
-  }
-
-  // Default is public
-  var visibility = "public"
-      isConstant = false,
-      returns    = [],
-      custom     = [];
-
-  if(part.modifiers) {
-    part.modifiers.forEach(function(mod) {
-      switch(mod.name) {
-        case "public":
-          break;
-        case "private":
-          visibility = "private";
-          break;
-        case "internal":
-          visibility = "internal";
-          break;
-        case "external":
-          visibility = "external";
-          break;
-        case "constant":
-          isConstant = true;
-          break;
-        case "returns":
-          mod.params.forEach(function(param) {
-            returns.push(param.name);
-          });
-          break;
-        default:
-          custom.push(mod.name);
+function generateReportForDir (dir) {
+  const files = utils.getAllFiles(dir)
+  files
+    .filter(filepath => filepath.split('.').pop() === 'sol')
+    .forEach(filepath => {
+      try {
+        contract = fs.readFileSync(filepath, 'utf8')
+        generateReport(filepath, contract)
+      } catch (e) {
+        console.log(`Error reading contract ${contract} :`, e)
       }
-    });
+    })
+}
+
+function generateReport (filepath, contract) {
+  // write output to file
+  let filename = path.basename(filepath)
+  let reportName = `./output/${filename}.md`
+  let writeStream = fs.createWriteStream(reportName)
+
+  try {
+    parsedContract = parser.parse(contract)
+  } catch (e) {
+    if (e instanceof parser.ParserError) {
+      console.log(e.errors)
+    }
   }
 
-  return {
-    contract:   contractName,
-    function:   funcName,
-    visibility: visibility,
-    constant:   isConstant,
-    returns:    returns,
-    modifiers:  custom
+  let functionRows = []
+  let eventRows = []
+  let modifierRows = []
+  let importRows = []
+  let contractInfo = ''
+  for (const node of parsedContract.children) {
+    const type = node.type
+    switch (type) {
+      // Contract solidity version
+      case 'PragmaDirective':
+        const contractPragma = node.name
+        const contractPragmaVersion = node.value
+        contractInfo += `pragma ${contractPragma} ${contractPragmaVersion}`
+        break
+      // Contract name and type
+      case 'ContractDefinition':
+        const contractName = node.name
+        const contractType = node.kind
+        contractInfo += ` ${contractType} ${contractName}`
+        for (const subNode of node.subNodes) {
+          switch (subNode.type) {
+            // Contract Functions
+            case 'FunctionDefinition':
+              functionRows.push(report.parseFunction(subNode))
+              break
+            // Contract Events
+            case 'EventDefinition':
+              eventRows.push(report.parseEvent(subNode))
+              break
+            // Contract Modifiers
+            case 'ModifierDefinition':
+              modifierRows.push(report.parseModifier(subNode))
+              break
+          }
+        }
+        break
+      // Contract Imports
+      case 'ImportDirective':
+        importRows.push(report.parseImport(node))
+        break
+    }
   }
+
+  let generalInfoTable = asciiTable.factory({
+    heading: [contractInfo],
+    rows: [filepath]
+  })
+
+  let functionTable = asciiTable.factory({
+    title: 'functions',
+    heading: ['name', 'visibility', 'return', 'modifiers'],
+    rows: functionRows
+  })
+
+  let eventTable = asciiTable.factory({
+    heading: ['events'],
+    rows: eventRows
+  })
+
+  let modifierTable = asciiTable.factory({
+    heading: ['modifiers'],
+    rows: modifierRows
+  })
+
+  let importTable = asciiTable.factory({
+    heading: ['imports'],
+    rows: importRows
+  })
+
+  // very fancy markdown ;)
+  writeStream.write('```' + '\r\n')
+
+  writeStream.write(generalInfoTable.toString() + '\r\n')
+
+  if (importRows.length > 0) {
+    writeStream.write(importTable.toString() + '\r\n')
+  }
+
+  if (functionRows.length > 0) {
+    writeStream.write(functionTable.toString() + '\r\n')
+  }
+
+  if (modifierRows.length > 0) {
+    writeStream.write(modifierTable.toString() + '\r\n')
+  }
+
+  if (eventRows.length > 0) {
+    writeStream.write(eventTable.toString() + '\r\n')
+  }
+
+  writeStream.write('```' + '\r\n')
+
+  // the finish event is emitted when all data has been flushed from the stream
+  writeStream.on('finish', function () {
+    console.log(`written ${reportName}`)
+  })
+
+  // close the stream
+  writeStream.end()
+}
+
+module.exports = {
+  generateReport,
+  generateReportForDir
 }

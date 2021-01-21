@@ -1,23 +1,47 @@
 {
   "name": "sol-function-profiler",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "index.js",
+  "husky": {
+    "hooks": {
+      "pre-commit": "npm run precommit"
+    }
+  },
+  "bin": {
+    "sol-function-profiler": "./cli.js"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "precommit": "lint-staged"
+  },
+  "lint-staged": {
+    "*.js": [
+      "prettier-standard",
+      "git add"
+    ]
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/EricR/sol-function-profiler.git"
+    "url": "git+https://github.com/agonzalezv/sol-function-profiler.git"
   },
-  "author": "Eric Rafaloff",
+  "author": "Eric Rafaloff, Andres Gonzalez, Alex Tikonoff",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/EricR/sol-function-profiler/issues"
+    "url": "https://github.com/agonzalezv/sol-function-profiler/issues"
   },
-  "homepage": "https://github.com/EricR/sol-function-profiler#readme",
+  "homepage": "https://github.com/agonzalezv/sol-function-profiler#readme",
   "dependencies": {
     "ascii-table": "0.0.9",
-    "solidity-parser": "^0.3.0"
+    "solidity-parser-antlr": "^0.3.2",
+    "yargs": "^12.0.2"
+  },
+  "devDependencies": {
+    "eslint": "^5.6.1",
+    "husky": "^1.1.2",
+    "lint-staged": "^7.3.0",
+    "prettier": "^1.14.3",
+    "prettier-standard": "^8.0.1",
+    "standard": "^12.0.1"
   }
 }
